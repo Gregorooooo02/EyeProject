@@ -12,13 +12,19 @@ class ViewController: NSViewController {
         if let view = self.skView {
             // Load the SKScene from 'GameScene.sks'
             if let scene = SKScene(fileNamed: "GameScene") {
-                // Set the scale mode to scale to fit the window
-                scene.scaleMode = .fill
+                // Set the scale mode to fullscreen
+                scene.scaleMode = .aspectFill
                 
                 // Present the scene
                 view.presentScene(scene)
             }
         }
+    }
+    
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        
+        view.window?.toggleFullScreen(nil)
     }
 }
 
