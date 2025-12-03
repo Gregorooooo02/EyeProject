@@ -12,11 +12,14 @@ class AudioMonitor {
     private var isMonitoring = false
     private var currentVolume: Float = 0.0
     
-    private let noiseThreshold: Float = 0.05
+    private let noiseThreshold: Float = 0.02
     
     // Callbacks
     var onNoiseDetected: (() -> Void)?
     var onSilence: (() -> Void)?
+    
+    // Debug
+    private var lastLogTime: TimeInterval = 0
     
     // MARK: - Initialization
     private init() {}
@@ -84,7 +87,7 @@ class AudioMonitor {
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
+                        
             if averageAmplitude > self.noiseThreshold {
                 self.onNoiseDetected?()
             } else {

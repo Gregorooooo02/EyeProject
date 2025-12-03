@@ -9,13 +9,30 @@ class GameManager {
     
     // Configuration
     private let maxEyesBeforeAngry = 20
-    private let spawnInterval: TimeInterval = 0.8 // Szybsze spawn przy hałasie
+    private let spawnInterval: TimeInterval = 0.5
     
     // State
     private var isAngryMode = false
     private var lastNoiseTime: TimeInterval = 0
     private var silenceStartTime: TimeInterval?
-    private let silenceDurationToRemove: TimeInterval = 1.5 // Szybsze usuwanie przy ciszy
+    private let silenceDurationToRemove: TimeInterval = 2.0
+    
+    // Angry mode exit
+    private var angrySilenceStartTime: TimeInterval?
+    private var requiredAngrySilenceDuration: TimeInterval = 0
+    
+    // Boss mode
+    private var isBossMode = false
+    private var bossEye: EyeAnimator?
+    private var angryNoiseStartTime: TimeInterval?
+    private var requiredAngryNoiseDuration: TimeInterval = TimeInterval.random(in: 2.0...3.0)
+    
+    // Boss eye states
+    private var isBossAngry = false
+    private var bossAngrySilenceStartTime: TimeInterval?
+    private var requiredBossAngrySilenceDuration: TimeInterval = 0
+    private var bossNormalSilenceStartTime: TimeInterval?
+    private let bossNormalSilenceDuration: TimeInterval = 3.0
     
     // Screen bounds
     private var screenBounds: CGRect = .zero
@@ -33,11 +50,50 @@ class GameManager {
     }
     
     func update(currentTime: TimeInterval) {
-        if let silenceStart = silenceStartTime {
-            let silenceDuration = currentTime - silenceStart
-            if silenceDuration >= silenceDurationToRemove && eyes.count > 1 {
-                removeRandomEye()
-                silenceStartTime = currentTime
+        if isBossMode {
+            // Boss mode logic
+            if isBossAngry {
+                if let silenceStart = bossAngrySilenceStartTime {
+                    let silenceDuration = currentTime - silenceStart
+                    if silenceDuration >= requiredBossAngrySilenceDuration {
+                        setBossAngry(false)
+                    }
+                }
+            } else {
+                if let silenceStart = bossNormalSilenceStartTime {
+                    let silenceDuration = currentTime - silenceStart
+                    if silenceDuration >= bossNormalSilenceDuration {
+                        closeBossAndReset()
+                    }
+                }
+            }
+        } else if isAngryMode {
+            if let angrySilenceStart = angrySilenceStartTime {
+                let silenceDuration = currentTime - angrySilenceStart
+                if silenceDuration >= requiredAngrySilenceDuration {
+                    exitAngryMode()
+                }
+            }
+            
+            if let noiseStart = angryNoiseStartTime {
+                let noiseDuration = currentTime - noiseStart
+                
+                let progress = (noiseDuration / requiredAngryNoiseDuration) * 100
+                if Int(noiseDuration * 2) % 1 == 0 {
+                    print("💢 Boss mode progress: \(String(format: "%.0f", progress))% (\(String(format: "%.1f", noiseDuration))/\(String(format: "%.1f", requiredAngryNoiseDuration))s)")
+                }
+                
+                if noiseDuration >= requiredAngryNoiseDuration {
+                    enterBossMode()
+                }
+            }
+        } else {
+            if let silenceStart = silenceStartTime {
+                let silenceDuration = currentTime - silenceStart
+                if silenceDuration >= silenceDurationToRemove && eyes.count > 1 {
+                    removeRandomEye()
+                    silenceStartTime = currentTime
+                }
             }
         }
     }
@@ -58,22 +114,61 @@ class GameManager {
     private func handleNoise() {
         let currentTime = CACurrentMediaTime()
         
-        silenceStartTime = nil
-        
-        if currentTime - lastNoiseTime >= spawnInterval {
-            lastNoiseTime = currentTime
+        if isBossMode {
+            bossNormalSilenceStartTime = nil
+            bossAngrySilenceStartTime = nil
             
-            if eyes.count < maxEyesBeforeAngry {
-                spawnEyeAtRandomPosition()
-            } else if !isAngryMode {
-                enterAngryMode()
+            if !isBossAngry {
+                setBossAngry(true)
+            }
+        } else if isAngryMode {
+            // Angry mode
+            silenceStartTime = nil
+            angrySilenceStartTime = nil
+            
+            if angryNoiseStartTime == nil {
+                angryNoiseStartTime = currentTime
+            }
+            
+        } else {
+            // Normal mode
+            silenceStartTime = nil
+            
+            if currentTime - lastNoiseTime >= spawnInterval {
+                lastNoiseTime = currentTime
+                
+                if eyes.count < maxEyesBeforeAngry {
+                    spawnEyeAtRandomPosition()
+                } else {
+                    enterAngryMode()
+                }
             }
         }
     }
     
     private func handleSilence() {
-        if silenceStartTime == nil {
-            silenceStartTime = CACurrentMediaTime()
+        if isBossMode {
+            if isBossAngry {
+                if bossAngrySilenceStartTime == nil {
+                    bossAngrySilenceStartTime = CACurrentMediaTime()
+                }
+            } else {
+                if bossNormalSilenceStartTime == nil {
+                    bossNormalSilenceStartTime = CACurrentMediaTime()
+                }
+            }
+        } else if isAngryMode {
+            // Angry mode
+            angryNoiseStartTime = nil
+            
+            if angrySilenceStartTime == nil {
+                angrySilenceStartTime = CACurrentMediaTime()
+            }
+        } else {
+            // Normal mode
+            if silenceStartTime == nil {
+                silenceStartTime = CACurrentMediaTime()
+            }
         }
     }
     
@@ -113,16 +208,22 @@ class GameManager {
         let minY = screenBounds.minY + margin
         let maxY = screenBounds.maxY - margin
         
-        for _ in 0..<20 {
+        let maxAttempts = 50
+        
+        for attempt in 0..<maxAttempts {
             let x = CGFloat.random(in: minX...maxX)
             let y = CGFloat.random(in: minY...maxY)
             let position = CGPoint(x: x, y: y)
             
-            let minDistance: CGFloat = 250
             var isValid = true
             
             for eye in eyes {
                 let eyePosition = eye.getPosition()
+                let eyeSafetyRadius = eye.getSafetyRadius()
+                
+                let newEyeSafetyRadius: CGFloat = 350
+                let minDistance = eyeSafetyRadius + newEyeSafetyRadius
+                
                 let distance = hypot(position.x - eyePosition.x, position.y - eyePosition.y)
                 if distance < minDistance {
                     isValid = false
@@ -131,14 +232,39 @@ class GameManager {
             }
             
             if isValid {
+                print("✅ Found valid position after \(attempt + 1) attempts")
                 return position
             }
         }
         
-        return CGPoint(
-            x: CGFloat.random(in: minX...maxX),
-            y: CGFloat.random(in: minY...maxY)
-        )
+        print("⚠️ No perfect position found, finding best available spot")
+        return findBestAvailablePosition(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
+    }
+    
+    private func findBestAvailablePosition(minX: CGFloat, maxX: CGFloat, minY: CGFloat, maxY: CGFloat) -> CGPoint {
+        var bestPosition = CGPoint.zero
+        var maxMinDistance: CGFloat = 0
+        
+        for _ in 0..<20 {
+            let x = CGFloat.random(in: minX...maxX)
+            let y = CGFloat.random(in: minY...maxY)
+            let position = CGPoint(x: x, y: y)
+            
+            var minDistance: CGFloat = .greatestFiniteMagnitude
+            
+            for eye in eyes {
+                let eyePosition = eye.getPosition()
+                let distance = hypot(position.x - eyePosition.x, position.y - eyePosition.y)
+                minDistance = min(minDistance, distance)
+            }
+            
+            if minDistance > maxMinDistance {
+                maxMinDistance = minDistance
+                bestPosition = position
+            }
+        }
+        
+        return bestPosition
     }
     
     private func animateEyeOpening(_ eye: EyeAnimator) {
@@ -146,7 +272,6 @@ class GameManager {
     }
     
     // MARK: - Eye Removal
-    
     private func removeRandomEye() {
         guard eyes.count > 1 else { return }
         
@@ -162,11 +287,137 @@ class GameManager {
     // MARK: - Angry Mode
     private func enterAngryMode() {
         isAngryMode = true
+        angrySilenceStartTime = nil
+        angryNoiseStartTime = nil
+        
+        requiredAngrySilenceDuration = TimeInterval.random(in: 3.0...5.0)
 
         for eye in eyes {
             eye.setAngry(true)
         }
         
-        print("😡 ANGRY MODE ACTIVATED!")
+        print("😡 ANGRY MODE ACTIVATED! Required silence: \(String(format: "%.1f", requiredAngrySilenceDuration))s")
+    }
+    
+    private func exitAngryMode() {
+        isAngryMode = false
+        angrySilenceStartTime = nil
+        angryNoiseStartTime = nil
+        
+        for eye in eyes {
+            eye.setAngry(false)
+        }
+        
+        print("😌 Exiting angry mode - back to normal")
+    }
+    
+    // MARK: - Boss Mode
+    private func enterBossMode() {
+        print("👁️👁️ BOSS MODE ACTIVATED!")
+        
+        isBossMode = true
+        isAngryMode = false
+        isBossAngry = true
+        angryNoiseStartTime = nil
+        angrySilenceStartTime = nil
+        bossAngrySilenceStartTime = nil
+        bossNormalSilenceStartTime = nil
+        
+        requiredBossAngrySilenceDuration = TimeInterval.random(in: 3.0...5.0)
+        requiredAngryNoiseDuration = TimeInterval.random(in: 3.0...5.0)
+        
+        closeAllEyes {
+            self.spawnBossEye()
+        }
+    }
+    
+    private func closeAllEyes(completion: @escaping () -> Void) {
+        guard !eyes.isEmpty else {
+            completion()
+            return
+        }
+        
+        let group = DispatchGroup()
+        
+        for eye in eyes {
+            group.enter()
+            eye.removeFromScene(animated: true) {
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            self.eyes.removeAll()
+            print("✅ All eyes closed")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                completion()
+            }
+        }
+    }
+    
+    private func spawnBossEye() {
+        let bossEye = EyeAnimator(position: .zero, isBoss: true)
+        bossEye.addToScene(scene!)
+        self.bossEye = bossEye
+        
+        bossEye.animateOpening()
+        
+        bossEye.setAngry(true)
+        
+        FaceTracker.shared.onFaceUpdate = { [weak self] position, detected in
+            self?.bossEye?.update(facePosition: position, faceDetected: detected)
+        }
+        
+        print("👁 Boss eye spawned")
+    }
+    
+    private func setBossAngry(_ angry: Bool) {
+        guard let bossEye = bossEye else { return }
+        
+        isBossAngry = angry
+        bossAngrySilenceStartTime = nil
+        bossNormalSilenceStartTime = nil
+        
+        bossEye.setAngry(angry)
+        
+        if angry {
+            print("😡 Boss eye is ANGRY")
+        } else {
+            print("😐 Boss eye calmed down")
+        }
+    }
+    
+    private func closeBossAndReset() {
+        print("😴 Boss eye closing - resetting game")
+        
+        guard let bossEye = bossEye else {
+            resetGame()
+            return
+        }
+        
+        bossEye.removeFromScene(animated: true) { [weak self] in
+            self?.bossEye = nil
+            self?.resetGame()
+        }
+    }
+    
+    private func resetGame() {
+        print("🔄 Game reset - starting fresh")
+        
+        isBossMode = false
+        isAngryMode = false
+        isBossAngry = false
+        bossEye = nil
+        angryNoiseStartTime = nil
+        angrySilenceStartTime = nil
+        bossAngrySilenceStartTime = nil
+        bossNormalSilenceStartTime = nil
+        silenceStartTime = nil
+        lastNoiseTime = 0
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.spawnEye(at: .zero, animated: true)
+        }
     }
 }

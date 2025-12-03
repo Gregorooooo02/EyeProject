@@ -10,12 +10,14 @@ class EyeAnimator {
     private let lowerEyelidNode: SKSpriteNode;
     
     // MARK: Configuration
-    private let normalEyeSize: CGFloat = 0.05;
-    private let angryEyeSize: CGFloat = 0.05;
+    private let isBoss: Bool;
+    private let normalEyeSize: CGFloat;
+    private let angryEyeSize: CGFloat;
+    private let bossEyeSize: CGFloat = 0.25;
     
     private let normalPupilSize: CGFloat = 1.0;
     private let angryPupilSize: CGFloat = 0.1;
-    private let maxPupilOffset: CGFloat = 200.0;
+    private let maxPupilOffset: CGFloat = 150.0;
     
     private let minBlinkInterval: TimeInterval = 0.1;
     private let maxBlinkInterval: TimeInterval = 3.0;
@@ -42,9 +44,24 @@ class EyeAnimator {
     // Random look state
     private var isFaceTracked = true;
     private var randomLookPosition = CGPoint.zero;
+    private var randomLookTimer: Timer?;
+    
+    // Angry random look parameters
+    private let normalLookInterval = (min: 0.5, max: 2.5);
+    private let angryLookInterval = (min: 0.1, max: 0.3);
     
     // MARK: Initialization
-    init(position: CGPoint) {
+    init(position: CGPoint, isBoss: Bool = false) {
+        self.isBoss = isBoss;
+        
+        if isBoss {
+            self.normalEyeSize = bossEyeSize;
+            self.angryEyeSize = bossEyeSize;
+        } else {
+            self.normalEyeSize = 0.05;
+            self.angryEyeSize = 0.05;
+        }
+        
         eyeContainerNode = SKNode();
         
         eyeballNode = SKSpriteNode(imageNamed: "Eyeball");
@@ -66,8 +83,16 @@ class EyeAnimator {
         
         blinksUntilSquint = Int.random(in: minBlinksBeforeSquint...maxBlinksBeforeSquint);
         
-        startBlinking();
+        // Boss eye nie mruga i nie mruży
+        if !isBoss {
+            startBlinking();
+        }
+        
         startRandomLooking();
+    }
+    
+    deinit {
+        randomLookTimer?.invalidate();
     }
     
     private func setupNodes() {
@@ -134,6 +159,12 @@ class EyeAnimator {
     
     func getPosition() -> CGPoint {
         return eyeContainerNode.position;
+    }
+    
+    func getSafetyRadius() -> CGFloat {
+        let eyeSize = eyeballNode.size.width * currentEyeSize;
+        let safetyBuffer: CGFloat = 1.5;
+        return (eyeSize / 2.0) * safetyBuffer;
     }
     
     func animateOpening(completion: (() -> Void)? = nil) {
@@ -264,7 +295,11 @@ class EyeAnimator {
     }
     
     private func enterAngryMode() {
-        eyeContainerNode.removeAllActions();
+        upperEyelidNode.removeAllActions();
+        lowerEyelidNode.removeAllActions();
+        
+        isBlinking = false;
+        isSquinting = false;
         
         upperEyelidNode.yScale = 0.0;
         lowerEyelidNode.yScale = 0.0;
@@ -272,9 +307,20 @@ class EyeAnimator {
         irisNode.color = .red;
         irisNode.colorBlendFactor = 1.0;
         
+        stopRandomLooking();
+        startRandomLooking();
+        
         let eyeballScale = SKAction.scaleY(to: 1.0, duration: 0.3);
         eyeballScale.timingMode = .easeOut;
         eyeballNode.run(eyeballScale);
+        
+        let actualAngryEyeHeight = eyeballNode.size.height * 1.0;
+        let moveEyelidsUp = SKAction.moveTo(y: actualAngryEyeHeight / 1.0, duration: 0.3);
+        moveEyelidsUp.timingMode = .easeOut;
+        let moveEyelidsDown = SKAction.moveTo(y: -actualAngryEyeHeight / 1.0, duration: 0.3);
+        moveEyelidsDown.timingMode = .easeOut;
+        upperEyelidNode.run(moveEyelidsUp);
+        lowerEyelidNode.run(moveEyelidsDown);
         
         let scaleAction = SKAction.scale(to: angryEyeSize, duration: 0.3);
         scaleAction.timingMode = .easeOut;
@@ -293,11 +339,19 @@ class EyeAnimator {
         eyeContainerNode.removeAction(forKey: "vibration");
         
         irisNode.color = .blue;
-        irisNode.colorBlendFactor = 1.0;
+        irisNode.colorBlendFactor = 0.6;
         
         let eyeballScale = SKAction.scaleY(to: 0.8, duration: 0.3);
         eyeballScale.timingMode = .easeIn;
         eyeballNode.run(eyeballScale);
+        
+        let actualNormalEyeHeight = eyeballNode.size.height * 0.8;
+        let moveEyelidsUp = SKAction.moveTo(y: actualNormalEyeHeight / 1.5, duration: 0.3);
+        moveEyelidsUp.timingMode = .easeIn;
+        let moveEyelidsDown = SKAction.moveTo(y: -actualNormalEyeHeight / 1.5, duration: 0.3);
+        moveEyelidsDown.timingMode = .easeIn;
+        upperEyelidNode.run(moveEyelidsUp);
+        lowerEyelidNode.run(moveEyelidsDown);
         
         let scaleAction = SKAction.scale(to: normalEyeSize, duration: 0.3);
         scaleAction.timingMode = .easeIn;
@@ -310,6 +364,8 @@ class EyeAnimator {
         pupilNode.run(scalePupil);
         
         startBlinking();
+        stopRandomLooking();
+        startRandomLooking();
     }
     
     private var originalContainerPosition: CGPoint = .zero
@@ -354,23 +410,43 @@ class EyeAnimator {
     
     // MARK: - Random Looking
     private func startRandomLooking() {
+        stopRandomLooking();
         scheduleNextRandomLook();
     }
     
+    private func stopRandomLooking() {
+        randomLookTimer?.invalidate();
+        randomLookTimer = nil;
+    }
+    
     private func scheduleNextRandomLook() {
-        let interval = TimeInterval.random(in: 0.5...3.0);
+        let interval: TimeInterval;
+        let lookRange: (x: ClosedRange<CGFloat>, y: ClosedRange<CGFloat>);
         
-        let wait = SKAction.wait(forDuration: interval);
-        let look = SKAction.run { [weak self] in
-            self?.performRandomLook();
+        if isAngry {
+            interval = TimeInterval.random(in: angryLookInterval.min...angryLookInterval.max);
+            lookRange = (x: -1.5...1.5, y: -1.5...1.5);
+        } else {
+            interval = TimeInterval.random(in: normalLookInterval.min...normalLookInterval.max);
+            lookRange = (x: -0.8...0.8, y: -0.7...0.7);
         }
         
-        eyeContainerNode.run(SKAction.sequence([wait, look]), withKey: "randomLook");
+        randomLookTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            self?.performRandomLook();
+        }
     }
     
     private func performRandomLook() {
-        let randomX = CGFloat.random(in: -0.8...0.8);
-        let randomY = CGFloat.random(in: -0.7...0.7);
+        let lookRange: (x: ClosedRange<CGFloat>, y: ClosedRange<CGFloat>);
+        
+        if isAngry {
+            lookRange = (x: -1.0...1.0, y: -1.0...1.0);
+        } else {
+            lookRange = (x: -0.8...0.8, y: -0.7...0.7);
+        }
+        
+        let randomX = CGFloat.random(in: lookRange.x);
+        let randomY = CGFloat.random(in: lookRange.y);
         
         randomLookPosition = CGPoint(x: randomX, y: randomY);
         
