@@ -34,6 +34,7 @@ class EyeAnimator {
     private var isBlinking = false;
     private var isSquinting = false;
     private var isOpening = false;
+    private var isClosing = false;
     private var blinkCounter = 0;
     private var blinksUntilSquint = 0;
     
@@ -83,7 +84,6 @@ class EyeAnimator {
         
         blinksUntilSquint = Int.random(in: minBlinksBeforeSquint...maxBlinksBeforeSquint);
         
-        // Boss eye nie mruga i nie mruży
         if !isBoss {
             startBlinking();
         }
@@ -146,7 +146,10 @@ class EyeAnimator {
     }
     
     func removeFromScene(animated: Bool, completion: (() -> Void)? = nil) {
+        guard !isClosing else { return }
+        
         if animated {
+            isClosing = true;
             animateClosing {
                 self.eyeContainerNode.removeFromParent();
                 completion?();
@@ -180,16 +183,44 @@ class EyeAnimator {
         
         upperEyelidNode.run(open);
         lowerEyelidNode.run(open) { [weak self] in
-            self?.isOpening = false;
-            self?.startBlinking();
+            guard let self = self else { return }
+            self.isOpening = false;
+            
+            if !self.isBoss {
+                self.startBlinking();
+            }
+            
             completion?();
         }
     }
     
     func animateClosing(completion: (() -> Void)? = nil) {
         eyeContainerNode.removeAllActions();
+        upperEyelidNode.removeAllActions();
+        lowerEyelidNode.removeAllActions();
         
-        let close = SKAction.scaleY(to: eyelidMaxScale, duration: 0.5);
+        let actualEyeHeight = eyeballNode.size.height * eyeballNode.yScale;
+        let eyelidPositionY: CGFloat
+        
+        if eyeballNode.yScale >= 1.0 {
+            eyelidPositionY = actualEyeHeight / 1.0
+        } else {
+            eyelidPositionY = actualEyeHeight / 1.5
+        }
+        
+        upperEyelidNode.position.y = eyelidPositionY;
+        lowerEyelidNode.position.y = -eyelidPositionY;
+        
+        let targetScale: CGFloat
+        if isBoss {
+            targetScale = 2.0
+        } else if eyeballNode.yScale >= 1.0 {
+            targetScale = 1.3
+        } else {
+            targetScale = eyelidMaxScale
+        }
+        
+        let close = SKAction.scaleY(to: targetScale, duration: 0.5);
         close.timingMode = .easeIn;
         
         upperEyelidNode.run(close);

@@ -78,11 +78,6 @@ class GameManager {
             if let noiseStart = angryNoiseStartTime {
                 let noiseDuration = currentTime - noiseStart
                 
-                let progress = (noiseDuration / requiredAngryNoiseDuration) * 100
-                if Int(noiseDuration * 2) % 1 == 0 {
-                    print("💢 Boss mode progress: \(String(format: "%.0f", progress))% (\(String(format: "%.1f", noiseDuration))/\(String(format: "%.1f", requiredAngryNoiseDuration))s)")
-                }
-                
                 if noiseDuration >= requiredAngryNoiseDuration {
                     enterBossMode()
                 }
@@ -183,8 +178,6 @@ class GameManager {
         }
         
         updateFaceTrackingCallback()
-        
-        print("👁️ Spawned eye #\(eyes.count) at \(position)")
     }
     
     private func updateFaceTrackingCallback() {
@@ -232,12 +225,10 @@ class GameManager {
             }
             
             if isValid {
-                print("✅ Found valid position after \(attempt + 1) attempts")
                 return position
             }
         }
         
-        print("⚠️ No perfect position found, finding best available spot")
         return findBestAvailablePosition(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
     }
     
@@ -280,7 +271,6 @@ class GameManager {
         
         eye.removeFromScene(animated: true) { [weak self] in
             self?.eyes.remove(at: randomIndex)
-            print("👁️ Removed eye - remaining: \(self?.eyes.count ?? 0)")
         }
     }
     
@@ -295,8 +285,6 @@ class GameManager {
         for eye in eyes {
             eye.setAngry(true)
         }
-        
-        print("😡 ANGRY MODE ACTIVATED! Required silence: \(String(format: "%.1f", requiredAngrySilenceDuration))s")
     }
     
     private func exitAngryMode() {
@@ -307,14 +295,10 @@ class GameManager {
         for eye in eyes {
             eye.setAngry(false)
         }
-        
-        print("😌 Exiting angry mode - back to normal")
     }
     
     // MARK: - Boss Mode
     private func enterBossMode() {
-        print("👁️👁️ BOSS MODE ACTIVATED!")
-        
         isBossMode = true
         isAngryMode = false
         isBossAngry = true
@@ -348,7 +332,6 @@ class GameManager {
         
         group.notify(queue: .main) {
             self.eyes.removeAll()
-            print("✅ All eyes closed")
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 completion()
@@ -368,8 +351,6 @@ class GameManager {
         FaceTracker.shared.onFaceUpdate = { [weak self] position, detected in
             self?.bossEye?.update(facePosition: position, faceDetected: detected)
         }
-        
-        print("👁 Boss eye spawned")
     }
     
     private func setBossAngry(_ angry: Bool) {
@@ -380,17 +361,9 @@ class GameManager {
         bossNormalSilenceStartTime = nil
         
         bossEye.setAngry(angry)
-        
-        if angry {
-            print("😡 Boss eye is ANGRY")
-        } else {
-            print("😐 Boss eye calmed down")
-        }
     }
     
     private func closeBossAndReset() {
-        print("😴 Boss eye closing - resetting game")
-        
         guard let bossEye = bossEye else {
             resetGame()
             return
@@ -403,8 +376,6 @@ class GameManager {
     }
     
     private func resetGame() {
-        print("🔄 Game reset - starting fresh")
-        
         isBossMode = false
         isAngryMode = false
         isBossAngry = false

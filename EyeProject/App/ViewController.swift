@@ -19,6 +19,14 @@ class ViewController: NSViewController {
                 view.presentScene(scene)
             }
         }
+        
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 {
+                NSApplication.shared.terminate(nil)
+                return nil
+            }
+            return event
+        }
     }
     
     override func viewDidAppear() {
