@@ -3,7 +3,6 @@ import AVFoundation
 class AudioMonitor {
     
     // MARK: - Properties
-    
     static let shared = AudioMonitor()
     
     private var audioEngine: AVAudioEngine?

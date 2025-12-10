@@ -3,61 +3,61 @@ import Vision
 
 class FaceTracker : NSObject {
     // MARK: Properties
-    static let shared = FaceTracker();
+    static let shared = FaceTracker()
     
-    private let captureSession = AVCaptureSession();
-    private let videoOutput = AVCaptureVideoDataOutput();
-    private let sequenceHandler = VNSequenceRequestHandler();
+    private let captureSession = AVCaptureSession()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let sequenceHandler = VNSequenceRequestHandler()
     
-    private(set) var facePosition = CGPoint.zero;
-    private(set) var faceDetected = false;
+    private(set) var facePosition = CGPoint.zero
+    private(set) var faceDetected = false
     
     var onFaceUpdate: ((CGPoint, Bool) -> Void)?
     
     private override init() {
-        super.init();
+        super.init()
     }
     
     func startTracking() {
         print("Turning on tracking...")
-        setupCamera();
+        setupCamera()
     }
     
     func stopTracking() {
-        captureSession.stopRunning();
+        captureSession.stopRunning()
     }
         
     private func setupCamera() {
-        captureSession.sessionPreset = .vga640x480;
+        captureSession.sessionPreset = .vga640x480
         
         // Find the camera
         guard let camera = AVCaptureDevice.default(for: .video) else {
-            print("Could not find a camera in the device.");
-            return;
+            print("Could not find a camera in the device.")
+            return
         }
         
-        print("Camera found: \(camera.localizedName)");
+        print("Camera found: \(camera.localizedName)")
         
         // Add camera as an input
         do {
-            let input = try AVCaptureDeviceInput(device: camera);
+            let input = try AVCaptureDeviceInput(device: camera)
             if captureSession.canAddInput(input) {
-                captureSession.addInput(input);
+                captureSession.addInput(input)
             }
         } catch {
-            print("Camera error: \(error)");
-            return;
+            print("Camera error: \(error)")
+            return
         }
         
         // Video output configuration
-        videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"));
+        videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
         if captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
         }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession.startRunning();
-            print("Camera successfuly turned on.");
+            self?.captureSession.startRunning()
+            print("Camera successfuly turned on.")
         }
     }
     
@@ -66,30 +66,30 @@ class FaceTracker : NSObject {
             guard let self = self else { return }
             
             if let error = error {
-                print("Detection error: \(error)");
-                return;
+                print("Detection error: \(error)")
+                return
             }
             
             guard let observations = request.results as? [VNFaceObservation],
                   let face = observations.first else {
-                self.faceDetected = false;
-                self.onFaceUpdate?(.zero, false);
-                return;
+                self.faceDetected = false
+                self.onFaceUpdate?(.zero, false)
+                return
             }
             
-            let boundingBox = face.boundingBox;
+            let boundingBox = face.boundingBox
             
-            let x = (boundingBox.midX * 2) - 1;
-            let y = (boundingBox.midY * 2) - 1;
+            let x = (boundingBox.midX * 2) - 1
+            let y = (boundingBox.midY * 2) - 1
             
-            let normalizedPosition = CGPoint(x: -x, y: y);
+            let normalizedPosition = CGPoint(x: -x, y: y)
             
-            self.facePosition = normalizedPosition;
-            self.faceDetected = true;
-            self.onFaceUpdate?(normalizedPosition, true);
+            self.facePosition = normalizedPosition
+            self.faceDetected = true
+            self.onFaceUpdate?(normalizedPosition, true)
         }
         
-        try? sequenceHandler.perform([request], on: pixelBuffer);
+        try? sequenceHandler.perform([request], on: pixelBuffer)
     }
 }
 

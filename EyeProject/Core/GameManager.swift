@@ -203,7 +203,7 @@ class GameManager {
         
         let maxAttempts = 50
         
-        for attempt in 0..<maxAttempts {
+        for _ in 0..<maxAttempts {
             let x = CGFloat.random(in: minX...maxX)
             let y = CGFloat.random(in: minY...maxY)
             let position = CGPoint(x: x, y: y)

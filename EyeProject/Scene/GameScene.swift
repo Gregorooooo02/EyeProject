@@ -2,19 +2,19 @@ import SpriteKit
 import GameplayKit
 
 class GameScene: SKScene {
-    private var gameManager: GameManager?;
+    private var gameManager: GameManager?
     
     override func didMove(to view: SKView) {
-        backgroundColor = .black;
+        backgroundColor = .black
         
-        gameManager = GameManager(scene: self);
+        gameManager = GameManager(scene: self)
         
-        FaceTracker.shared.startTracking();
+        FaceTracker.shared.startTracking()
         
-        gameManager?.start();
+        gameManager?.start()
     }
     
     override func update(_ currentTime: TimeInterval) {
-        gameManager?.update(currentTime: currentTime);
+        gameManager?.update(currentTime: currentTime)
     }
 }
