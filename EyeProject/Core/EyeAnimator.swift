@@ -19,6 +19,9 @@ class EyeAnimator {
     private let angryPupilSize: CGFloat = 0.1
     private let maxPupilOffset: CGFloat = 150.0
     
+    private let normalPupilExtraOffset: CGFloat = 100.0
+    private let angryPupilExtraOffset: CGFloat = 300.0
+    
     private let minBlinkInterval: TimeInterval = 0.1
     private let maxBlinkInterval: TimeInterval = 3.0
     private let blinkDuration: TimeInterval = 0.15
@@ -29,8 +32,14 @@ class EyeAnimator {
     private let minSquintDuration: TimeInterval = 1
     private let maxSquintDuration: TimeInterval = 3
     
+    private let colorTransitionDuration: TimeInterval = 0.5
+    
+    private let minCalmDownDelay: TimeInterval = 0.5
+    private let maxCalmDownDelay: TimeInterval = 2.0
+    
     // MARK: - State
     private var isAngry = false
+    private var isVibrating = false
     private var isBlinking = false
     private var isSquinting = false
     private var isOpening = false
@@ -46,6 +55,11 @@ class EyeAnimator {
     private var isFaceTracked = true
     private var randomLookPosition = CGPoint.zero
     private var randomLookTimer: Timer?
+    
+    private var colorTimer: Timer?
+    private var colorTransitionProgress: CGFloat = 0.0
+    private var targetColor: SKColor = .blue
+    private var startColor: SKColor = .blue
     
     // Angry random look parameters
     private let normalLookInterval = (min: 0.5, max: 2.5)
@@ -93,6 +107,7 @@ class EyeAnimator {
     
     deinit {
         randomLookTimer?.invalidate()
+        colorTimer?.invalidate()
     }
     
     private func setupNodes() {
@@ -213,7 +228,7 @@ class EyeAnimator {
         
         let targetScale: CGFloat
         if isBoss {
-            targetScale = 2.0
+            targetScale = 0.8
         } else if eyeballNode.yScale >= 1.0 {
             targetScale = 1.3
         } else {
@@ -231,12 +246,12 @@ class EyeAnimator {
     
     func setAngry(_ angry: Bool) {
         guard angry != isAngry else { return }
-        isAngry = angry
         
         if angry {
+            isAngry = true
             enterAngryMode()
         } else {
-            exitAngryMode()
+            stopVibrationAndCalmDown()
         }
     }
     
@@ -335,8 +350,7 @@ class EyeAnimator {
         upperEyelidNode.yScale = 0.0
         lowerEyelidNode.yScale = 0.0
         
-        irisNode.color = .red
-        irisNode.colorBlendFactor = 1.0
+        startColorTransition(to: .red, blendFactor: 1.0)
         
         stopRandomLooking()
         startRandomLooking()
@@ -363,40 +377,57 @@ class EyeAnimator {
         scalePupil.timingMode = .easeOut
         pupilNode.run(scalePupil)
         
+        isVibrating = true
         startVibration()
     }
     
     private func exitAngryMode() {
-        eyeContainerNode.removeAction(forKey: "vibration")
+        let delay = TimeInterval.random(in: minCalmDownDelay...maxCalmDownDelay)
         
-        irisNode.color = .blue
-        irisNode.colorBlendFactor = 0.6
-        
-        let eyeballScale = SKAction.scaleY(to: 0.8, duration: 0.3)
-        eyeballScale.timingMode = .easeIn
-        eyeballNode.run(eyeballScale)
-        
-        let actualNormalEyeHeight = eyeballNode.size.height * 0.8
-        let moveEyelidsUp = SKAction.moveTo(y: actualNormalEyeHeight / 1.5, duration: 0.3)
-        moveEyelidsUp.timingMode = .easeIn
-        let moveEyelidsDown = SKAction.moveTo(y: -actualNormalEyeHeight / 1.5, duration: 0.3)
-        moveEyelidsDown.timingMode = .easeIn
-        upperEyelidNode.run(moveEyelidsUp)
-        lowerEyelidNode.run(moveEyelidsDown)
-        
-        let scaleAction = SKAction.scale(to: normalEyeSize, duration: 0.3)
-        scaleAction.timingMode = .easeIn
-        eyeContainerNode.run(scaleAction) { [weak self] in
-            self?.currentEyeSize = self?.normalEyeSize ?? 0.8
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, !self.isAngry else { return }
+            
+            self.startColorTransition(to: .blue, blendFactor: 0.6)
+            
+            let eyeballScale = SKAction.scaleY(to: 0.8, duration: 0.3)
+            eyeballScale.timingMode = .easeIn
+            self.eyeballNode.run(eyeballScale)
+            
+            let actualNormalEyeHeight = self.eyeballNode.size.height * 0.8
+            let moveEyelidsUp = SKAction.moveTo(y: actualNormalEyeHeight / 1.5, duration: 0.3)
+            moveEyelidsUp.timingMode = .easeIn
+            let moveEyelidsDown = SKAction.moveTo(y: -actualNormalEyeHeight / 1.5, duration: 0.3)
+            moveEyelidsDown.timingMode = .easeIn
+            self.upperEyelidNode.run(moveEyelidsUp)
+            self.lowerEyelidNode.run(moveEyelidsDown)
+            
+            let scaleAction = SKAction.scale(to: self.normalEyeSize, duration: 0.3)
+            scaleAction.timingMode = .easeIn
+            self.eyeContainerNode.run(scaleAction) { [weak self] in
+                self?.currentEyeSize = self?.normalEyeSize ?? 0.8
+            }
+            
+            let scalePupil = SKAction.scale(to: self.normalPupilSize, duration: 0.3)
+            scalePupil.timingMode = .easeIn
+            self.pupilNode.run(scalePupil)
+            
+            self.startBlinking()
+            self.stopRandomLooking()
+            self.startRandomLooking()
+        }
+    }
+    
+    private func stopVibrationAndCalmDown() {
+        guard isVibrating else {
+            exitAngryMode()
+            return
         }
         
-        let scalePupil = SKAction.scale(to: normalPupilSize, duration: 0.3)
-        scalePupil.timingMode = .easeIn
-        pupilNode.run(scalePupil)
+        isVibrating = false
+        eyeContainerNode.removeAction(forKey: "vibration")
         
-        startBlinking()
-        stopRandomLooking()
-        startRandomLooking()
+        isAngry = false
+        exitAngryMode()
     }
     
     private var originalContainerPosition: CGPoint = .zero
@@ -436,7 +467,14 @@ class EyeAnimator {
         move.timingMode = .easeOut
         
         irisNode.run(move)
-        pupilNode.run(move)
+        
+        let extraOffset = isAngry ? angryPupilExtraOffset : normalPupilExtraOffset
+        let pupilOffsetX = scaledOffsetX + (targetFacePosition.x * extraOffset)
+        let pupilOffsetY = scaledOffsetY + (targetFacePosition.y * extraOffset)
+        
+        let pupilMove = SKAction.move(to: CGPoint(x: pupilOffsetX, y: pupilOffsetY), duration: duration)
+        pupilMove.timingMode = .easeOut
+        pupilNode.run(pupilMove)
     }
     
     // MARK: - Random Looking
@@ -482,5 +520,54 @@ class EyeAnimator {
         randomLookPosition = CGPoint(x: randomX, y: randomY)
         
         scheduleNextRandomLook()
+    }
+    
+    private func startColorTransition(to color: SKColor, blendFactor: CGFloat) {
+        colorTimer?.invalidate()
+        
+        startColor = irisNode.color
+        targetColor = color
+        colorTransitionProgress = 0.0
+        
+        let startBlendFactor = irisNode.colorBlendFactor
+        let targetBlendFactor = blendFactor
+        
+        let updateInterval: TimeInterval = 1.0 / 60.0
+        let totalSteps = colorTransitionDuration / updateInterval
+        
+        colorTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            self.colorTransitionProgress += 1.0 / CGFloat(totalSteps)
+            
+            if self.colorTransitionProgress >= 1.0 {
+                self.irisNode.color = self.targetColor
+                self.irisNode.colorBlendFactor = targetBlendFactor
+                self.colorTimer?.invalidate()
+                self.colorTimer = nil
+            } else {
+                self.irisNode.color = self.lerpColor(from: self.startColor, to: self.targetColor, progress: self.colorTransitionProgress)
+                self.irisNode.colorBlendFactor = self.lerp(from: startBlendFactor, to: targetBlendFactor, progress: self.colorTransitionProgress)
+            }
+        }
+    }
+    
+    private func lerpColor(from: SKColor, to: SKColor, progress: CGFloat) -> SKColor {
+        var fromR: CGFloat = 0, fromG: CGFloat = 0, fromB: CGFloat = 0, fromA: CGFloat = 0
+        var toR: CGFloat = 0, toG: CGFloat = 0, toB: CGFloat = 0, toA: CGFloat = 0
+        
+        from.getRed(&fromR, green: &fromG, blue: &fromB, alpha: &fromA)
+        to.getRed(&toR, green: &toG, blue: &toB, alpha: &toA)
+        
+        let r = lerp(from: fromR, to: toR, progress: progress)
+        let g = lerp(from: fromG, to: toG, progress: progress)
+        let b = lerp(from: fromB, to: toB, progress: progress)
+        let a = lerp(from: fromA, to: toA, progress: progress)
+        
+        return SKColor(red: r, green: g, blue: b, alpha: a)
+    }
+    
+    private func lerp(from: CGFloat, to: CGFloat, progress: CGFloat) -> CGFloat {
+        return from + (to - from) * progress
     }
 }

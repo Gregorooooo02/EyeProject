@@ -37,6 +37,12 @@ class GameManager {
     // Screen bounds
     private var screenBounds: CGRect = .zero
     
+    // First eye teleport
+    private var firstEyeTeleportTime: TimeInterval?
+    private let minTeleportDelay: TimeInterval = 3.0
+    private let maxTeleportDelay: TimeInterval = 7.0
+    private var nextTeleportDelay: TimeInterval = 0
+    
     // MARK: - Initialization
     init(scene: SKScene) {
         self.scene = scene
@@ -47,6 +53,7 @@ class GameManager {
     func start() {
         spawnEye(at: .zero, animated: true)
         setupAudioMonitoring()
+        nextTeleportDelay = TimeInterval.random(in: minTeleportDelay...maxTeleportDelay)
     }
     
     func update(currentTime: TimeInterval) {
@@ -85,7 +92,19 @@ class GameManager {
         } else {
             if let silenceStart = silenceStartTime {
                 let silenceDuration = currentTime - silenceStart
-                if silenceDuration >= silenceDurationToRemove && eyes.count > 1 {
+                
+                if eyes.count == 1 {
+                    if firstEyeTeleportTime == nil {
+                        firstEyeTeleportTime = currentTime
+                    }
+                    
+                    let teleportDuration = currentTime - (firstEyeTeleportTime ?? currentTime)
+                    if teleportDuration >= nextTeleportDelay {
+                        teleportFirstEye()
+                        firstEyeTeleportTime = currentTime
+                        nextTeleportDelay = TimeInterval.random(in: minTeleportDelay...maxTeleportDelay)
+                    }
+                } else if silenceDuration >= silenceDurationToRemove && eyes.count > 1 {
                     removeRandomEye()
                     silenceStartTime = currentTime
                 }
@@ -134,6 +153,7 @@ class GameManager {
                 
                 if eyes.count < maxEyesBeforeAngry {
                     spawnEyeAtRandomPosition()
+                    firstEyeTeleportTime = nil
                 } else {
                     enterAngryMode()
                 }
@@ -262,6 +282,35 @@ class GameManager {
         eye.animateOpening()
     }
     
+    // MARK: - Eye Teleportation
+    private func teleportFirstEye() {
+        guard eyes.count == 1, let firstEye = eyes.first else { return }
+        
+        firstEye.removeFromScene(animated: true) { [weak self] in
+            guard let self = self else { return }
+            self.eyes.removeAll()
+            
+            let newPosition = self.getRandomPosition()
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.spawnEye(at: newPosition, animated: true)
+            }
+        }
+    }
+    
+    private func getRandomPosition() -> CGPoint {
+        let margin: CGFloat = 150
+        let minX = screenBounds.minX + margin
+        let maxX = screenBounds.maxX - margin
+        let minY = screenBounds.minY + margin
+        let maxY = screenBounds.maxY - margin
+        
+        let x = CGFloat.random(in: minX...maxX)
+        let y = CGFloat.random(in: minY...maxY)
+        
+        return CGPoint(x: x, y: y)
+    }
+    
     // MARK: - Eye Removal
     private func removeRandomEye() {
         guard eyes.count > 1 else { return }
@@ -386,6 +435,8 @@ class GameManager {
         bossNormalSilenceStartTime = nil
         silenceStartTime = nil
         lastNoiseTime = 0
+        firstEyeTeleportTime = nil
+        nextTeleportDelay = TimeInterval.random(in: minTeleportDelay...maxTeleportDelay)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.spawnEye(at: .zero, animated: true)
