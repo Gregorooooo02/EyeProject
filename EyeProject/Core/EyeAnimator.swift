@@ -61,6 +61,8 @@ class EyeAnimator {
     private var targetColor: SKColor = .blue
     private var startColor: SKColor = .blue
     
+    var assignedFaceIndex: Int = 0
+    
     // Angry random look parameters
     private let normalLookInterval = (min: 0.5, max: 2.5)
     private let angryLookInterval = (min: 0.1, max: 0.3)
@@ -261,6 +263,22 @@ class EyeAnimator {
         if faceDetected {
             targetFacePosition = facePosition
         } else {
+            targetFacePosition = randomLookPosition
+        }
+        
+        updatePupilPosition()
+    }
+    
+    func update(faces: [CGPoint]) {
+        if assignedFaceIndex < faces.count {
+            targetFacePosition = faces[assignedFaceIndex]
+            isFaceTracked = true
+        } else if !faces.isEmpty {
+            let fallbackIndex = min(assignedFaceIndex, faces.count - 1)
+            targetFacePosition = faces[fallbackIndex]
+            isFaceTracked = true
+        } else {
+            isFaceTracked = false
             targetFacePosition = randomLookPosition
         }
         

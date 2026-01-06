@@ -11,8 +11,10 @@ class FaceTracker : NSObject {
     
     private(set) var facePosition = CGPoint.zero
     private(set) var faceDetected = false
+    private(set) var allFaces: [CGPoint] = []
     
     var onFaceUpdate: ((CGPoint, Bool) -> Void)?
+    var onMultipleFacesUpdate: (([CGPoint]) -> Void)?
     
     private override init() {
         super.init()
@@ -71,22 +73,34 @@ class FaceTracker : NSObject {
             }
             
             guard let observations = request.results as? [VNFaceObservation],
-                  let face = observations.first else {
+                  !observations.isEmpty else {
                 self.faceDetected = false
+                self.allFaces = []
                 self.onFaceUpdate?(.zero, false)
+                self.onMultipleFacesUpdate?([])
                 return
             }
             
-            let boundingBox = face.boundingBox
+            var detectedFaces: [CGPoint] = []
             
-            let x = (boundingBox.midX * 2) - 1
-            let y = (boundingBox.midY * 2) - 1
+            for face in observations {
+                let boundingBox = face.boundingBox
+                
+                let x = (boundingBox.midX * 2) - 1
+                let y = (boundingBox.midY * 2) - 1
+                
+                let normalizedPosition = CGPoint(x: -x, y: y)
+                detectedFaces.append(normalizedPosition)
+            }
             
-            let normalizedPosition = CGPoint(x: -x, y: y)
+            detectedFaces.sort { $0.x < $1.x }
             
-            self.facePosition = normalizedPosition
+            self.allFaces = detectedFaces
+            self.facePosition = detectedFaces.first ?? .zero
             self.faceDetected = true
-            self.onFaceUpdate?(normalizedPosition, true)
+            
+            self.onFaceUpdate?(self.facePosition, true)
+            self.onMultipleFacesUpdate?(detectedFaces)
         }
         
         try? sequenceHandler.perform([request], on: pixelBuffer)

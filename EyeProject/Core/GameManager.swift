@@ -201,11 +201,34 @@ class GameManager {
     }
     
     private func updateFaceTrackingCallback() {
+        FaceTracker.shared.onMultipleFacesUpdate = { [weak self] faces in
+            guard let self = self else { return }
+            
+            self.reassignFaceIndices()
+            
+            for eye in self.eyes {
+                eye.update(faces: faces)
+            }
+        }
+        
         FaceTracker.shared.onFaceUpdate = { [weak self] position, detected in
             guard let self = self else { return }
-            for eye in self.eyes {
-                eye.update(facePosition: position, faceDetected: detected)
+            
+            if FaceTracker.shared.allFaces.isEmpty {
+                for eye in self.eyes {
+                    eye.update(facePosition: position, faceDetected: detected)
+                }
             }
+        }
+        
+        reassignFaceIndices()
+    }
+    
+    private func reassignFaceIndices() {
+        let faceCount = max(1, FaceTracker.shared.allFaces.count)
+        
+        for (index, eye) in eyes.enumerated() {
+            eye.assignedFaceIndex = index % faceCount
         }
     }
     
@@ -320,6 +343,7 @@ class GameManager {
         
         eye.removeFromScene(animated: true) { [weak self] in
             self?.eyes.remove(at: randomIndex)
+            self?.reassignFaceIndices()
         }
     }
     
@@ -397,8 +421,18 @@ class GameManager {
         
         bossEye.setAngry(true)
         
+        FaceTracker.shared.onMultipleFacesUpdate = { [weak self] faces in
+            if let firstFace = faces.first {
+                self?.bossEye?.update(facePosition: firstFace, faceDetected: true)
+            } else {
+                self?.bossEye?.update(facePosition: .zero, faceDetected: false)
+            }
+        }
+        
         FaceTracker.shared.onFaceUpdate = { [weak self] position, detected in
-            self?.bossEye?.update(facePosition: position, faceDetected: detected)
+            if FaceTracker.shared.allFaces.isEmpty {
+                self?.bossEye?.update(facePosition: position, faceDetected: detected)
+            }
         }
     }
     
